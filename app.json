@@ -15,7 +15,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.alen_858.react_native"
     },
     "web": {
       "bundler": "metro",
@@ -32,7 +33,8 @@
           "backgroundColor": "#ffffff",
           "enableFullScreenImage_legacy": true
         }
-      ],[
+      ],
+      [
         "expo-font",
         {
           "fonts": [

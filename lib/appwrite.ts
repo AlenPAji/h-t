@@ -11,6 +11,7 @@ import {
 import * as Linking from "expo-linking";
 import { openAuthSessionAsync } from "expo-web-browser";
 
+
 export const config = {
     platform: "com.jsm.restate",
     endpoint: process.env.EXPO_PUBLIC_APPWRITE_ENDPOINT,
@@ -19,7 +20,8 @@ export const config = {
     galleriesCollectionId:process.env.EXPO_PUBLIC_APPWRITE_GALLERY_COLLECTION_ID,
     reviewsCollectionId:process.env.EXPO_PUBLIC_APPWRITE_REVIEW_COLLECTION_ID,
     agentsCollectionId:process.env.EXPO_PUBLIC_APPWRITE_AGENTS_COLLECTION_ID,
-    propertiesCollectionId:process.env.EXPO_PUBLIC_APPWRITE_PROPERTY_COLLECTION_ID
+    propertiesCollectionId:process.env.EXPO_PUBLIC_APPWRITE_PROPERTY_COLLECTION_ID,
+    emergencycontactid:process.env.EXPO_PUBLIC_APPWRITE_USER_COLLECTION_ID
 
 };
 
@@ -42,6 +44,8 @@ export async function login() {
             redirectUri
         );
 
+        console.log(response)
+
         if (!response) throw new Error("Create OAuth2 token failed");
 
 
@@ -50,8 +54,6 @@ export async function login() {
         const browserResult = await openAuthSessionAsync(
             response.toString(),
             redirectUri,
-
-
         );
 
         //console.log(browserResult);
@@ -60,7 +62,7 @@ export async function login() {
 
 
         if (browserResult.type !== "success")
-            throw new Error("Create OAuth2 token failed");
+            throw new Error("Create browser token failed");
 
         const url = new URL(browserResult.url);
         const secret = url.searchParams.get("secret")?.toString();
@@ -92,7 +94,7 @@ export async function getCurrentUser() {
         const result = await account.get();
         if (result.$id) {
             const userAvatar = avatar.getInitials(result.name);
-            console.log(result.toString());
+           // console.log(result.toString());
 
             return {
                 ...result,
@@ -163,6 +165,9 @@ export async function getProperties({filter,query,limit}:{
     }
 }
 
+
+
+
 export async function getPropertyById({ id }: { id: string }) {
     try {
         const result = await databases.getDocument(
@@ -176,3 +181,101 @@ export async function getPropertyById({ id }: { id: string }) {
         return null;
     }
 }
+
+export async function addUser(name: string, email: string, userId: string) {
+    try {
+      const result = await databases.createDocument(
+        config.databaseId!,               // Database ID
+        config.emergencycontactid!,             // Collection ID (emergencyContactId in your case)
+        ID.unique(),                      // Auto-generate unique document ID
+        {
+          "name":name,
+          "email":email,
+          "userId":userId
+                      // Custom field for emergency contact
+        }
+      );
+  
+     // console.log('Document added:', result);
+      return result; // Return the created document
+    } catch (error) {
+      console.error('Error inserting document:', error);
+      return null; // Return null in case of error
+    }
+  }
+
+
+  export async function getUserContacts(userId: string) {
+    try {
+      const response = await databases.listDocuments(
+        config.databaseId!,
+        config.emergencycontactid!,
+        [
+          Query.equal("userId", userId)
+        ]
+      );
+      
+     // console.log('Retrieved contacts:', response.documents);
+      return response.documents; // Return the list of documents
+    } catch (error) {
+      console.error('Error retrieving contacts:', error);
+      return []; // Return empty array in case of error
+    }
+  }
+
+
+  export async function updateContact(documentId: string, data: { name?: string; email?: string }) {
+    try {
+      const result = await databases.updateDocument(
+        config.databaseId!,
+        config.emergencycontactid!,
+        documentId,
+        data
+      );
+      //console.log('Document updated:', result);
+      return result;
+    } catch (error) {
+      console.error('Error updating document:', error);
+      return null;
+    }
+  }
+
+
+  export async function deleteContact(documentId: string) {
+    try {
+      const result = await databases.deleteDocument(
+        config.databaseId!,
+        config.emergencycontactid!,
+        documentId
+      );
+     // console.log('Document deleted');
+      return true;
+    } catch (error) {
+      console.error('Error deleting document:', error);
+      return false;
+    }
+  }
+
+
+  export async function fetchEmailsByUserId(userId: string) {
+    try {
+      const response = await databases.listDocuments(
+        config.databaseId!,
+        config.emergencycontactid!, // Or use the appropriate collection ID if different
+        [
+          // Filter for documents with matching userId
+            Query.equal('userId', userId),
+        // Only select the email field to optimize the query
+            Query.select(['email', '$id']) // Include document ID for reference
+        ]
+      );
+      
+      // Extract just the emails from the response
+      const emails = response.documents.map(doc => doc.email);
+      
+      return emails;
+    } catch (error) {
+      console.error('Error fetching emails:', error);
+      return [];
+    }
+  }

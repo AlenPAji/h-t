@@ -1,6 +1,6 @@
-import React, { createContext, useContext, ReactNode } from "react";
+import React, { createContext, useContext, ReactNode, useState, useEffect } from "react";
 
-import { getCurrentUser } from "./appwrite";
+import { fetchEmailsByUserId, getCurrentUser } from "./appwrite";
 import { useAppwrite } from "./useAppwrite";
 import { Redirect } from "expo-router";
 
@@ -9,6 +9,8 @@ interface GlobalContextType {
     user: User | null;
     loading: boolean;
     refetch: (newParams: Record<string, string | number>) => Promise<void>
+    userEmails: { email: string; id: string }[];
+    refreshEmails: () => Promise<void>;
 }
 
 interface User {
@@ -33,7 +35,35 @@ export const GlobalProvider = ({ children }: GlobalProviderProps) => {
         fn: getCurrentUser,
     });
 
+    
+    const [userEmails, setUserEmails] = useState<{ email: string; id: string }[]>([]);
+    const [emailsLoading, setEmailsLoading] = useState(false);
+  
     const isLogged = !!user;
+  
+    // Function to fetch emails
+    const fetchEmails = async () => {
+      if (!user || !user.$id) return;
+      
+      setEmailsLoading(true);
+      try {
+        const emails = await fetchEmailsByUserId(user.$id);
+        setUserEmails(emails);
+      } catch (error) {
+        console.error('Error in fetchEmails:', error);
+      } finally {
+        setEmailsLoading(false);
+      }
+    };
+  
+    // Fetch emails when user logs in
+    useEffect(() => {
+      if (isLogged) {
+        fetchEmails();
+      } else {
+        setUserEmails([]);
+      }
+    }, [isLogged, user?.$id]);
 
 
     return (
@@ -43,6 +73,8 @@ export const GlobalProvider = ({ children }: GlobalProviderProps) => {
                 user,
                 loading,
                 refetch,
+                userEmails,
+                refreshEmails: fetchEmails
             }}
         >
             {children}
