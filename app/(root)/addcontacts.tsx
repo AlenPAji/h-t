@@ -11,96 +11,197 @@ import {
   Alert
 } from "react-native";
 import { useGlobalContext } from "@/lib/global-provider";
-import { addUser, deleteContact, getUserContacts, updateContact } from "@/lib/appwrite";
+import firestore from '@react-native-firebase/firestore';
+import { fetchEmergencyContactEmails } from "@/lib/appwrite";
 
 // Define TypeScript interfaces
 interface Contact {
-  id: string | number;
+  id: string;
   name: string;
   email: string;
-  $id?: string; // Appwrite document ID
-}
-
-interface AppwriteResponse {
-  $id?: string;
-  [key: string]: any;
 }
 
 const App = () => {
-  const { user } = useGlobalContext();
+  const { user, updateUser } = useGlobalContext(); // Assuming updateUser is available in context
   const [name, setName] = useState<string>("");
   const [email, setEmail] = useState<string>("");
   const [editIndex, setEditIndex] = useState<number | null>(null);
   const [data, setData] = useState<Contact[]>([]);
   const [isFormVisible, setIsFormVisible] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [count,setcount]=useState(0);
 
   // Fetch contacts when component mounts or user changes
   useEffect(() => {
     const fetchContacts = async () => {
-      if (user?.$id) {
+      if (user?.uid) {
         setIsLoading(true);
         try {
-          const contactsData = await getUserContacts(user.$id);
-          // Map the data to match our Contact interface
-          const formattedContacts: Contact[] = contactsData.map((doc: any) => ({
-            id: doc.$id,
-            name: doc.name,
-            email: doc.email,
-            $id: doc.$id
-          }));
-          setData(formattedContacts);
+          const userDoc = await firestore()
+            .collection('users')
+            .doc(user.uid)
+            .get();
+          
+          if (userDoc.exists) {
+            const userData = userDoc.data();
+            const contactEmails = userData?.contactEmails || [];
+            
+            // Handle both array of objects and array of arrays formats
+            const formattedContacts: Contact[] = contactEmails.map((contact: any) => {
+              // If contact is an array, convert to object
+              if (Array.isArray(contact)) {
+                return {
+                  id: contact[1] || contact.email || String(Math.random()),
+                  name: contact[0] || contact.name || "",
+                  email: contact[1] || contact.email || ""
+                };
+              }
+              
+              return {
+                id: contact.email || String(Math.random()),
+                name: contact.name || "",
+                email: contact.email || ""
+              };
+            });
+            
+            setData(formattedContacts);
+          } else {
+            setData([]);
+          }
         } catch (error) {
           console.error("Failed to fetch contacts:", error);
+          Alert.alert("Error", "Failed to fetch contacts");
         } finally {
           setIsLoading(false);
         }
+      } else {
+        setIsLoading(false);
+        setData([]);
       }
     };
-
+    
     fetchContacts();
-  }, [user?.$id]);
+  }, [user,count]);
+
+
 
   // Add New Contact
-  const handleAdd = async () => {
-    if (name.trim() && email.trim() && user?.$id) {
-      try {
-        const response = await addUser(name, email, user.$id) as AppwriteResponse | null;
-        if (response) {
-          // Create new contact with proper typing
-          const newContact: Contact = {
-            id: response.$id || Date.now(),
-            name,
-            email,
-            $id: response.$id
-          };
-          setData([...data, newContact]);
-          setName("");
-          setEmail("");
-          setIsFormVisible(false);
-        }
-      } catch (error) {
-        Alert.alert("Error", "Failed to add contact");
+ // Add New Contact
+const handleAdd = async () => {
+  if (name.trim() && email.trim() && user?.uid) {
+    try {
+      // Create new contact object with consistent format
+      const newContact = {
+        name: name.trim(),
+        email: email.trim()
+      };
+      
+      // Get current contactEmails array or initialize as empty array
+      const userDoc = await firestore()
+        .collection('users')
+        .doc(user.uid)
+        .get();
+      
+      const existingContacts = userDoc.exists && userDoc.data()?.contactEmails 
+        ? userDoc.data()?.contactEmails 
+        : [];
+      
+      // Add new contact to the array
+      
+      const updatedContacts = [...existingContacts, newContact];
+      const increment = () => setcount(count + 1);
+      increment
+      
+      // Update Firestore
+      await firestore()
+        .collection('users')
+        .doc(user.uid)
+        .update({
+          contactEmails: updatedContacts
+        });
+      
+      // Update local state with properly formatted contact
+      const formattedNewContact: Contact = {
+        id: email.trim(), // Using email as ID
+        name: name.trim(),
+        email: email.trim()
+      };
+      
+      setData(prevData => [...prevData, formattedNewContact]);
+      
+      // Update global context correctly
+      if (updateUser) {
+        await updateUser({
+          contactEmails: updatedContacts
+        });
       }
+      
+      setName("");
+      setEmail("");
+      setIsFormVisible(false);
+      
+    } catch (error) {
+      console.error("Failed to add contact:", error);
+      Alert.alert("Error", "Failed to add contact");
     }
-  };
+  } else {
+    Alert.alert("Validation Error", "Name and email are required");
+  }
+};
 
   // Delete Contact
-  const handleDelete = async (id: string | number) => {
+  const handleDelete = async (id: string) => {
+    if (!user?.uid) return;
+    
     try {
-      // Assuming there's a deleteDocument function in your appwrite setup
-      // If not, you'll need to create it similar to addUser
-       await deleteContact(id as string);
+      // Find the contact to delete
+      const contactToDelete = data.find(contact => contact.id === id);
+      if (!contactToDelete) return;
       
-      // For now, we'll just update the UI
-      setData(data.filter((item) => item.id !== id));
+      // Get current contacts from Firestore
+      const userDoc = await firestore()
+        .collection('users')
+        .doc(user.uid)
+        .get();
+      
+      if (!userDoc.exists) return;
+      
+      const existingContacts = userDoc.data()?.contactEmails || [];
+      
+      // Filter out the contact to delete
+      const updatedContacts = existingContacts.filter((contact: any) => {
+        if (Array.isArray(contact)) {
+          return contact[1] !== id;
+        }
+        return contact.email !== id;
+      });
+      
+      // Update Firestore
+      await firestore()
+        .collection('users')
+        .doc(user.uid)
+        .update({
+          contactEmails: updatedContacts
+        });
+      
+      // Update local state
+      setData(data.filter(contact => contact.id !== id));
+      
+      // Update global context if available
+      if (updateUser) {
+        updateUser({
+          ...user,
+          contactEmails: updatedContacts
+        });
+      }
     } catch (error) {
+      console.error("Failed to delete contact:", error);
       Alert.alert("Error", "Failed to delete contact");
     }
   };
 
   // Start Editing
-  const handleEdit = (index: number) => {
+  const handleEdit = async (index: number) => {
     setEditIndex(index);
     setName(data[index].name);
     setEmail(data[index].email);
@@ -109,32 +210,77 @@ const App = () => {
 
   // Update Edited Contact
   const handleUpdate = async () => {
-    if (editIndex !== null) {
-      try {
-        const contactToUpdate = data[editIndex];
+    if (editIndex === null || !user?.uid) return;
+    
+    try {
+      const contactToUpdate = data[editIndex];
+      
+      // Get current contacts from Firestore
+      const userDoc = await firestore()
+        .collection('users')
+        .doc(user.uid)
+        .get();
+      
+      if (!userDoc.exists) return;
+      
+      const existingContacts = userDoc.data()?.contactEmails || [];
+      
+      // Update the contact in the array
+      const updatedContacts = existingContacts.map((contact: any) => {
+        if (Array.isArray(contact)) {
+          if (contact[1] === contactToUpdate.id) {
+            return [name.trim(), email.trim()];
+          }
+          return contact;
+        }
         
-        // Assuming there's an updateDocument function in your appwrite setup
-        // If not, you'll need to create it
-        await updateContact(contactToUpdate.$id as string, { name, email });
-        
-        // Update the local state
-        let updatedData = [...data];
-        updatedData[editIndex] = { ...updatedData[editIndex], name, email };
-        setData(updatedData);
-        setEditIndex(null);
-        setName("");
-        setEmail("");
-        setIsFormVisible(false);
-      } catch (error) {
-        Alert.alert("Error", "Failed to update contact");
+        if (contact.email === contactToUpdate.id) {
+          return {
+            name: name.trim(),
+            email: email.trim()
+          };
+        }
+        return contact;
+      });
+      
+      // Update Firestore
+      await firestore()
+        .collection('users')
+        .doc(user.uid)
+        .update({
+          contactEmails: updatedContacts
+        });
+      
+      // Update local state
+      const updatedData = [...data];
+      updatedData[editIndex] = {
+        id: email.trim(), // Update ID if email changed
+        name: name.trim(),
+        email: email.trim()
+      };
+      setData(updatedData);
+      
+      // Update global context if available
+      if (updateUser) {
+        updateUser({
+          ...user,
+          contactEmails: updatedContacts
+        });
       }
+      
+      setEditIndex(null);
+      setName("");
+      setEmail("");
+      setIsFormVisible(false);
+    } catch (error) {
+      console.error("Failed to update contact:", error);
+      Alert.alert("Error", "Failed to update contact");
     }
   };
 
   const renderItem = ({ item, index }: { item: Contact; index: number }) => (
     <View style={styles.row}>
       <View style={styles.contactInfo}>
-        <Text style={styles.idText}>{String(item.id).substring(0, 8)}...</Text>
         <Text style={styles.nameText}>{item.name}</Text>
         <Text style={styles.emailText}>{item.email}</Text>
       </View>

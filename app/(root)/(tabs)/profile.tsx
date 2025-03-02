@@ -4,7 +4,7 @@ import icons from "@/constants/icons";
 import images from "@/constants/images";
 import {settings} from "@/constants/data";
 import {useGlobalContext} from "@/lib/global-provider";
-import {logout} from "@/lib/appwrite";
+import {firebaseLogout, logout} from "@/lib/appwrite";
 
 interface SettingsItemProp{
     icon: ImageSourcePropType;
@@ -27,12 +27,12 @@ const SettingsItem = ({icon,title,onPress,textStyle,showArrow=true}:SettingsItem
 )
 
 const Profile = () => {
-    const {user,refetch}=useGlobalContext()
+    const {user}=useGlobalContext()
    const handleLogout=async()=>{
-       const result=await logout();
+       const result=await firebaseLogout();
        if(result){
            Alert.alert("Success","You have successfully logged out");
-           refetch({});
+           
        }else{
            Alert.alert("Error","Something went wrong");
        }

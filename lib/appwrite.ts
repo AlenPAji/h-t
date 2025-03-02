@@ -10,6 +10,32 @@ import {
 } from "react-native-appwrite";
 import * as Linking from "expo-linking";
 import { openAuthSessionAsync } from "expo-web-browser";
+import auth from '@react-native-firebase/auth';
+import firestore from '@react-native-firebase/firestore';
+
+interface FirebaseAuthError {
+  code: string;
+  message: string;
+}
+
+interface Contact {
+  name: string;
+  email: string;
+  isEmergency?: boolean;
+}
+
+interface EmergencyContact extends Contact {
+  isEmergency: true;
+}
+
+interface UserData {
+  username: string;
+  email: string;
+  contactEmails?: Contact[];
+  emergencyContacts?: EmergencyContact[];
+  createdAt?: any;
+}
+
 
 
 export const config = {
@@ -76,6 +102,152 @@ export async function login() {
     } catch (error) {
         console.error(error);
         return false;
+    }
+}
+
+export async function firebaseSignup(
+  email: string, 
+  password: string, 
+  username: string, 
+  contactEmails?: Array<{name: string, email: string}>
+) {
+  try {
+    // Create user with email and password
+    const userCredential = await auth().createUserWithEmailAndPassword(email, password);
+    const user = userCredential.user;
+    
+    // Create a user data object without any undefined values
+    const userData = {
+      username: username,
+      email: email,
+      createdAt: firestore.FieldValue.serverTimestamp()
+    };
+    
+    // Only add contactEmails to userData if it's defined
+    if (contactEmails) {
+      Object.assign(userData, { contactEmails });
+    }
+    
+    // Store user data in Firestore
+    await firestore()
+      .collection('users')
+      .doc(user.uid)
+      .set(userData);
+    
+    return {
+      success: true,
+      user: {
+        uid: user.uid,
+        email: user.email,
+        username: username
+      },
+      message: 'User account created successfully!'
+    };
+  } catch (error) {
+    console.error('Error creating user:', error);
+
+    throw new Error(
+      error instanceof Error
+        ? error.message
+        : 'An unknown error occurred during sign-up.'
+    );
+  }
+}
+export async function fetchEmergencyContactEmails(): Promise<string[]> {
+  try {
+    const currentUser = auth().currentUser;
+
+    if (!currentUser) {
+      throw new Error('No authenticated user found');
+    }
+
+    // Get the user document
+    const userDoc = await firestore()
+      .collection('users')
+      .doc(currentUser.uid)
+      .get();
+
+    if (!userDoc.exists) {
+      return [];
+    }
+
+    const userData = userDoc.data() as UserData;
+    console.log(userData);
+
+    const allContacts = userData.contactEmails || [];
+
+    // Extract emails into an array
+    const contactEmails = allContacts.map(contact => contact.email);
+    console.log(contactEmails)
+    return contactEmails;
+
+  } catch (error) {
+    console.error('Error fetching contact emails:', error);
+    throw new Error(
+      error instanceof Error
+        ? error.message
+        : 'An unknown error occurred while fetching contact emails.'
+    );
+  }
+}
+
+export async function firebaseLogin(email: string, password: string) {
+  try {
+    // 1. Sign in with email and password
+    const userCredential = await auth().signInWithEmailAndPassword(email, password);
+    const user = userCredential.user;
+    
+    // 2. Fetch additional user details from Firestore
+    const userDoc = await firestore().collection('users').doc(user.uid).get();
+    
+    if (!userDoc.exists) {
+      // Create a basic profile if it doesn't exist (fallback)
+      await firestore().collection('users').doc(user.uid).set({
+        email: user.email,
+        username: '',
+        contactEmails: [],
+        createdAt: firestore.Timestamp.now()
+      });
+    }
+    
+    const userData = userDoc.data();
+    return {
+      success: true,
+      user: {
+        uid: user.uid,
+        email: user.email || "unknown@example.com",
+        username: userData?.username || '',
+        contactEmails: userData?.contactEmails || []
+      }
+    };
+  } catch (error) {
+    const firebaseError = error as any;
+    let errorMessage = "Failed to log in.";
+    
+    switch (firebaseError.code) {
+      case "auth/invalid-email":
+        errorMessage = "Invalid email address.";
+        break;
+      case "auth/user-not-found":
+        errorMessage = "No account found with this email.";
+        break;
+      case "auth/wrong-password":
+        errorMessage = "Incorrect password.";
+        break;
+      default:
+        errorMessage = firebaseError.message;
+    }
+    throw new Error(errorMessage);
+  }
+}
+
+  export async function firebaseLogout() {
+    try {
+        await auth().signOut();
+        return { success: true, message: "Logged out successfully." };
+    } catch (error) {
+        console.error("Error during logout:", error);
+        throw new Error("Failed to log out.");
     }
 }
 
@@ -279,3 +451,4 @@ export async function addUser(name: string, email: string, userId: string) {
       return [];
     }
   }
+

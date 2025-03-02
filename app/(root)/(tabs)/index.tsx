@@ -1,22 +1,21 @@
-import React, { useState, useRef } from 'react';
-import { Image, StyleSheet, Text, View, TouchableOpacity, ScrollView, StatusBar, Alert, Dimensions } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Circle } from 'react-native-svg';
-import Icon from 'react-native-vector-icons/MaterialIcons';
-import { Link, router } from "expo-router";
-import { Animated } from 'react-native';
-import { useGlobalContext } from "@/lib/global-provider";
-import { useAppwrite } from "@/lib/useAppwrite";
-import { getLatestProperties, getProperties } from "@/lib/appwrite";
-import { useEffect } from "react";
-import NoResults from "@/components/NoResults";
-import Emergency from '../emergency';
 
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+import { useState, useRef } from "react"
+import { Image, StyleSheet, Text, View, TouchableOpacity, ScrollView, StatusBar, Dimensions } from "react-native"
+import { LinearGradient } from "expo-linear-gradient"
+import Svg, { Circle } from "react-native-svg"
+import Icon from "react-native-vector-icons/MaterialIcons"
+import { Link } from "expo-router"
+import { Animated } from "react-native"
+import { useGlobalContext } from "@/lib/global-provider"
+import { useEffect } from "react"
+
+const AnimatedCircle = Animated.createAnimatedComponent(Circle)
 const { width } = Dimensions.get("window")
 export default function Index() {
-  const { user,userEmails } = useGlobalContext()
-  console.log(userEmails)
+  const { user,emails } = useGlobalContext()
+
+  console.log("hey there",emails)
+
   const [connectionStatus, setConnectionStatus] = useState("Disconnected")
   const [isConnected, setIsConnected] = useState(false)
   const progress = useRef(new Animated.Value(0)).current
@@ -118,10 +117,11 @@ export default function Index() {
                     size={32}
                     color={isConnected ? "#4CAF50" : "#FF5252"}
                   />
-                  <Text style={[
-                    styles.connectionStatusText, 
-                    { color: isConnected ? "#4CAF50" : "#FF5252" }
-                  ]}>
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit={false}
+                    style={[styles.connectionStatusText, { color: isConnected ? "#4CAF50" : "#FF5252" }]}
+                  >
                     {connectionStatus}
                   </Text>
                   <Text style={styles.tapToConnectText}>{isConnected ? "Protected" : "Tap to connect"}</Text>
@@ -323,11 +323,14 @@ const styles = StyleSheet.create({
   connectionStatusContainer: {
     position: "absolute",
     alignItems: "center",
+    width: 120, // Set a fixed width to contain the text
   },
   connectionStatusText: {
     fontSize: 22,
     fontWeight: "bold",
     marginTop: 4,
+    textAlign: "center", // Center the text
+    includeFontPadding: false, // Removes extra padding
   },
   tapToConnectText: {
     fontSize: 12,
@@ -466,3 +469,4 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 })
+
