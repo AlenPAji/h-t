@@ -8,53 +8,151 @@ import { Link } from "expo-router"
 import { Animated } from "react-native"
 import { useGlobalContext } from "@/lib/global-provider"
 import { useEffect } from "react"
+import axios from 'axios';
+import { Alert } from 'react-native';
+import DeviceModal from "../../../components/DeviceConnectionModal";
+
+import useBLE from "../../../lib/useBLE";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle)
 const { width } = Dimensions.get("window")
 export default function Index() {
   const { user,emails } = useGlobalContext()
 
-  console.log("hey there",emails)
+  console.log("hey there",user?.name)
 
   const [connectionStatus, setConnectionStatus] = useState("Disconnected")
   const [isConnected, setIsConnected] = useState(false)
+  const [isSendingAlert, setIsSendingAlert] = useState(false)
   const progress = useRef(new Animated.Value(0)).current
   const pulseAnim = useRef(new Animated.Value(1)).current
+  const {
+    requestPermissions,
+    scanForPeripherals,
+    allDevices,
+    connectToDevice,
+    connectedDevice,
+    location,
+} = useBLE();
+const [isModalVisible, setIsModalVisible] = useState<boolean>(false);
 
-  // Function to animate the circular progress bar
-  const toggleConnection = () => {
-    const toValue = isConnected ? 0 : 1
+const scanForDevices = async () => {
+    const isPermissionsEnabled = await requestPermissions();
+    console.log(isPermissionsEnabled)
+    if (isPermissionsEnabled) {
+      console.log("scanning...")
+        scanForPeripherals();
+    }
+};
+
+
+
+useEffect(() => {
+  if (connectedDevice) {
+    // Connected animation
     Animated.timing(progress, {
-      toValue,
+      toValue: 1,
       duration: 1000,
       useNativeDriver: false,
     }).start(() => {
-      setIsConnected(!isConnected)
-      setConnectionStatus(isConnected ? "Disconnected" : "Connected")
-    })
+      setConnectionStatus('Connected');
+    });
+  } else {
+    // Reset to disconnected state
+    Animated.timing(progress, {
+      toValue: 0,
+      duration: 1000,
+      useNativeDriver: false,
+    }).start(() => {
+      setConnectionStatus('Disconnected');
+    });
+  }
+}, [connectedDevice]);
+
+// Pulse animation when not connected
+useEffect(() => {
+  if (!connectedDevice) {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ]),
+    ).start();
+  } else {
+    pulseAnim.setValue(1);
+  }
+}, [connectedDevice, pulseAnim]);
+
+const hideModal = () => {
+    setIsModalVisible(false);
+};
+
+const openModal = async () => {
+    scanForDevices();
+    setIsModalVisible(true);
+};
+
+  const sendEmergencyAlert = async () => {
+    setIsSendingAlert(true)
+
+   
+    
+    // Dummy latitude and longitude (you can replace with actual GPS data if needed)
+    
+      const latitude= location?.latitude||37.7749 // San Francisco coordinates as example
+      const longitude= location?.longitude||-122.4194
+    
+    
+    try {
+      // Replace with your actual Vercel hosted endpoint
+      const response = await axios.post('https://app-mailer.vercel.app/send-alert', {
+        username: user?.name || 'Rider',
+        emails: emails, // Sending the emails array directly
+        latitude: latitude,
+        longitude: longitude
+      });
+      
+      //console.log('Alert sent successfully:', response.data);
+      
+      // Show success feedback to user
+      Alert.alert(
+        "Alert Sent",
+        "Emergency services have been notified of your location.",
+        [{ text: "OK" }]
+      );
+    } catch (error) {
+      console.error('Error sending alert:', error);
+      
+      // Show error message to user
+      Alert.alert(
+        "Failed to Send Alert",
+        "Please try again or call emergency services directly.",
+        [{ text: "OK" }]
+      );
+    } finally {
+      setIsSendingAlert(false)
+    }
   }
 
-  // Pulse animation for the connection button when disconnected
   useEffect(() => {
-    if (!isConnected) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1.1,
-            duration: 1000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 1000,
-            useNativeDriver: true,
-          }),
-        ]),
-      ).start()
-    } else {
-      pulseAnim.setValue(1)
-    }
-  }, [isConnected, pulseAnim])
+        if (location) {
+            sendEmergencyAlert();
+        }
+    }, [location]);
+
+
+  //console.log(connectedDevice)
+
+  // Function to animate the circular progress bar
+  
 
   // Progress circle properties
   const strokeWidth = 10
@@ -88,19 +186,32 @@ export default function Index() {
             </TouchableOpacity>
           </View>
 
+          <TouchableOpacity 
+              style={styles.sendAlertButton} 
+              onPress={sendEmergencyAlert}
+              disabled={isSendingAlert}
+            >
+              <LinearGradient colors={["#FF9800", "#F57C00"]} style={styles.emergencyButtonGradient}>
+                <Icon name="warning" size={28} color="white" />
+                <Text style={styles.emergencyButtonText}>
+                  {isSendingAlert ? "Sending..." : "Send Alert"}
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+
           {/* Safety Status Card */}
           <View style={styles.safetyStatusContainer}>
             <Text style={styles.safetyStatusTitle}>Safety Device Status</Text>
 
             <Animated.View style={[styles.connectionButtonContainer, { transform: [{ scale: pulseAnim }] }]}>
-              <TouchableOpacity onPress={toggleConnection} style={styles.connectionButton}>
+              <TouchableOpacity onPress={connectedDevice ? undefined : openModal} style={styles.connectionButton}>
                 <Svg height="180" width="180" viewBox="0 0 120 120">
                   <Circle cx="60" cy="60" r={radius} stroke="#333333" strokeWidth={strokeWidth} fill="none" />
                   <AnimatedCircle
                     cx="60"
                     cy="60"
                     r={radius}
-                    stroke={isConnected ? "#4CAF50" : "#FF5252"}
+                    stroke={connectedDevice ? "#4CAF50" : "#FF5252"}
                     strokeWidth={strokeWidth}
                     fill="none"
                     strokeDasharray={circumference}
@@ -113,29 +224,35 @@ export default function Index() {
                 </Svg>
                 <View style={styles.connectionStatusContainer}>
                   <Icon
-                    name={isConnected ? "bluetooth-connected" : "bluetooth-disabled"}
+                    name={connectedDevice ? "bluetooth-connected" : "bluetooth-disabled"}
                     size={32}
-                    color={isConnected ? "#4CAF50" : "#FF5252"}
+                    color={connectedDevice ? "#4CAF50" : "#FF5252"}
                   />
                   <Text
                     numberOfLines={1}
                     adjustsFontSizeToFit={false}
-                    style={[styles.connectionStatusText, { color: isConnected ? "#4CAF50" : "#FF5252" }]}
+                    style={[styles.connectionStatusText, { color: connectedDevice ? "#4CAF50" : "#FF5252" }]}
                   >
                     {connectionStatus}
                   </Text>
-                  <Text style={styles.tapToConnectText}>{isConnected ? "Protected" : "Tap to connect"}</Text>
+                  <Text style={styles.tapToConnectText}>{connectedDevice ? "Protected" : "Tap to connect"}</Text>
                 </View>
               </TouchableOpacity>
             </Animated.View>
 
-            {isConnected && (
+            {connectedDevice && (
               <View style={styles.protectionActiveContainer}>
                 <Icon name="shield" size={20} color="#4CAF50" />
                 <Text style={styles.protectionActiveText}>Accident detection active</Text>
               </View>
             )}
           </View>
+          <DeviceModal
+                closeModal={hideModal}
+                visible={isModalVisible}
+                connectToPeripheral={connectToDevice}
+                devices={allDevices}
+            />
 
           {/* Emergency Actions */}
           <View style={styles.emergencyActionsContainer}>
@@ -230,6 +347,7 @@ export default function Index() {
             </ScrollView>
           </View>
         </View>
+        
       </ScrollView>
     </View>
   )
@@ -282,6 +400,13 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "bold",
     color: "white",
+  },
+  sendAlertButton: {
+    borderRadius: 12,
+    overflow: "hidden",
+    elevation: 3,
+    flex: 1,
+    marginLeft: 8,
   },
   settingsButton: {
     width: 40,
